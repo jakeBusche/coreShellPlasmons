@@ -26,6 +26,35 @@ Similar to fitFunc\_s.wls, but solves the Poisson equation _numerically_. Much f
 
 
 
+
+****************************************************************************************************************************************
+Directory -- variables
+****************************************************************************************************************************************
+
+radInhomSph.py:
+
+A python script that generates a shape file for the Discrete Dipole Approximation (see: BT Draine. The discrete-dipole approximation and its application to interstellar graphite grains. _Astrophys. J._ **333**, 848-872 (1988).) electromagnetism simulation software. The shape is that of a sphere with a radially varying dielectric function. This dielectric function can have any form.
+
+
+
+dielGen.py:
+
+A python script that generates a directory with a set of dielectric .tab files organized in numerical order corresponding to the material indices given in radInhomSph.py. The alphanumeric ordering of the .tab files in the directory will determine which index in a given shape file each dielectric file is associated with. The dielectric files and the naming conventions are otherwise unrestricted.
+
+
+
+shapePlotter.py:
+
+A sample python script for plotting DDA shape files. Under construction.
+
+
+
+d2g.py:
+
+A sample .py file for plotting the data output from DDA onto a plot (d2g == "data to graph"). Should be heavily modified by user as needed.
+
+
+
 ****************************************************************************************************************************************
 Directory -- variables
 ****************************************************************************************************************************************
