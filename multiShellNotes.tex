@@ -1,0 +1,115 @@
+\documentclass{article}
+\input{default_preamble}
+
+%%%%%%%%%%%%%%%%%%%%%%%%% Additional Packages %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Used to get bibliogrpahy options that I want
+\usepackage[comma,super,sort&compress]{natbib}
+
+% Used for enhanced control of figure placement
+\usepackage{float}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%% New Commands %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Used to place references in text
+\newcommand{\citen}[1]{
+	\begingroup
+		\hspace{-18pt}
+		\setcitestyle{numbers} % cite style is no longer superscript
+		\cite{#1}
+		\hspace{-6.5pt}
+	\endgroup
+}
+
+\renewcommand{\b}[1]{
+	\mathbf{#1}
+}
+
+\newcommand{\bb}[1]{
+	\mathbb{#1}
+}
+
+\renewcommand{\tilde}[1]{
+	\widetilde{#1}
+}
+
+\newcommand{\p}[0]{
+	^{\,\prime}
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%% Create Document %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{document}
+
+\title{Collecting Oscillator Parameters from Drude Models of Multiple-Shell Spherical Nanoparticles}
+\author{Jacob A Busche}
+\maketitle
+
+The component of the Green function that describes the induced LSP potential external to a small spherical nanoparticle with $N$ dielectric layers separated by concentric spherical boundaries will always appear in spherical coordinates as
+\begin{equation}
+\tilde{G}_\text{LSP}(\b{r},\b{r}',\omega) = \sum_{\ell m}\frac{4\pi}{2\ell+1}\frac{a_N^{2\ell+1}}{r^{\ell+1}r'^{\ell+1}}Y_{\ell m}(\theta,\phi)Y_{\ell m}^*(\theta',\phi')\frac{n_\ell(\omega)}{d_\ell(\omega)},
+\end{equation}
+where $a_N$ is the radius of the outermost boundary of the nanoparticle and $n_\ell(\omega)$ and $d_\ell(\omega)$ are complicated functions of the dielectric materials in each layer. Also, $n_\ell(\omega)/d_\ell(\omega)$ is unitless. Here we have assumed the dielectric functions in each layer are frequency-dependent; given constant dielectrics in each region, $n$ and $d$ become frequency-independent. The Green function, which describes the nanoparticle response to an external charge distribution, is related to the polarizability of the particle, which describes the nanoparticle response to an external electric field. Explicitly, the polarizability of the dipole modes of an $N$-layer sphere is given by
+\begin{equation}
+\alpha_N(\omega) = -a_N^3\frac{n_1(\omega)}{d_1(\omega)}.
+\end{equation}
+Assuming that each layer of the nanoparticle can be modeled with a Drude model such that
+\begin{equation}
+\epsilon_i(\omega) = \epsilon_{\infty i} - \frac{\omega_{pi}^2}{\omega^2 + i\omega\gamma_i},
+\end{equation}
+the numerator and denominator in the polarizability can be simplified such that
+\begin{equation}
+\alpha_N(\omega) = -a_N^3\frac{A_0 + A_1\omega + \ldots + A_N\omega^N}{B_0 + B_1\omega + \ldots + B_N\omega^N}
+\end{equation}
+where the coefficients $A_i$ and $B_i$ are complicated expressions involving the Drude parameters. Note that the units of each coefficient $A_i$ and $B_i$ are (rad/s)$^{N-i}$ such that each term in the expansions of $n_1(\omega)$ and $d_1(\omega)$ has the same units. The fraction can be simplified with a partial fraction decomposition such that
+\begin{equation}
+\alpha_N(\omega) = -a_N^3f_0 - a_N^3\sum_{i=1}^N\left(\frac{f_i}{\omega - \omega_{i+}} - \frac{f_i^*}{\omega - \omega_{i-}}\right)
+\end{equation}
+with $\omega_{i\pm}$ the complex roots of $d_1(\omega)$, $f_0$ the real amplitude of the frequency-independent part of $\alpha_N(\omega)$, and $f_{i>0}$ the complex amplitudes of each of the terms in $\alpha_{N\ell m}(\omega)$. These amplitudes are complicated functions of the Drude coefficients $\omega_{pi}$, $\gamma_i$, and $\epsilon_{\infty i}$ via the coefficients $A_{i\ell m}$ and $B_{i\ell m}$. Determination of the roots and amplitudes of $\alpha_{N\ell m}(\omega)$ can, in general, be found via computer algebra systems, and these roots are always related as $\omega_{i+} = -\omega_{i-}^*$. 
+
+The polarizability of a point dipole oscillator with natural frequency $\omega_i$, mass $m_i$, damping rate $\gamma_i$, and charge $e$ is
+\begin{equation}
+\begin{split}
+\alpha_i(\omega) &= \frac{e^2}{m_i}\frac{1}{\omega_i^2 - \omega^2 - i\omega\gamma_i}\\
+&= -\frac{e^2}{m_i}\frac{1}{\omega_{i+}-\omega_{i-}}\left(\frac{1}{\omega - \omega_{i+}} - \frac{1}{\omega - \omega_{i-}}\right),
+\end{split}
+\end{equation}
+with $\omega_{i\pm} = \pm\sqrt{\omega_i^2 - (\gamma_i/2)^2} - i\gamma_i/2$ and, thus, $\omega_{i+} = -\omega_{i-}^*$. Therefore, the response of the $N$-layer sphere to an applied uniform field appears to be identical to the response of a set of suitably-parametrized dipole oscillators. However, the numerators of the resonant terms in the oscillator polarizability are strictly real and so the influence of the complex amplitudes $f_i$ on $\alpha_N(\omega)$ must be determined to complete the analogy. A Fourier transformation to the time domain reveals that complex $f_i$ introduce only phase-shifts in the responses of the modes of the multilayered sphere. Letting the natural frequencies from the two derivations of the polarizability be equal as written, the time-dependent polarizabilities are
+\begin{equation}
+\begin{split}
+\alpha_N(t-t') &= a_N^3f_0\delta(t - t') + a_N^3\sum_{i=1}^N 2|f_i|e^{-\frac{\gamma_i}{2}(t-t')}\sin\left[\sqrt{\omega_i^2 - \left(\frac{\gamma_i}{2}\right)^2}(t - t')+ \phi_i\right],\\
+\alpha_i(t-t') &= \frac{e^2}{m_i}\frac{2}{\omega_{i+} - \omega_{i-}}e^{-\frac{\gamma_i}{2}(t-t')}\sin\left[\sqrt{\omega_i^2 - \left(\frac{\gamma_i}{2}\right)^2}(t-t')\right],
+\end{split}
+\end{equation}
+with $\phi_i = \tan^{-1}(\text{Im}\{f_i\}/\text{Re}\{f_i\})$ the relative phase of the $i^{th}$ mode of the multilayer sphere such that $f_i = |f_i|e^{i\phi_i}$. 
+
+Calculating the absorption cross-section of a damped oscillator undergoing steady motion involves an average of the power absorbed over a cycle. Therefore, the relative phase of the response of the oscillator to the driving field cannot contribute to it. The effective masses of the LSP modes of the multilayer sphere can therefore be written as
+\begin{equation}
+m_i = \frac{e^2}{a_N^3|f_i|}
+\end{equation}
+within the phase-neglected ($\phi_i = 0$) polarizability
+\begin{equation}
+\widebar{\alpha}_N(t - t') = a_N^3f_0\delta(t - t') + \sum_{i=1}^N \frac{2e^2}{m_i}e^{-\frac{\gamma_i}{2}(t-t')}\sin\left[\sqrt{\omega_i^2 - \left(\frac{\gamma_i}{2}\right)^2}(t - t')\right].
+\end{equation}
+In the frequency domain, this becomes
+\begin{equation}
+\widebar{\alpha}_N(\omega) = -a_N^3f_0 + \sum_{i=1}^N\frac{e^2}{m_i}\frac{1}{\omega_i^2 - \omega^2 - i\omega\gamma_i}
+\end{equation} 
+and so the absorption cross-section of the multilayer sphere can be written as
+\begin{equation}
+\begin{split}
+\sigma_\text{abs}(\omega) &= \frac{4\pi\omega}{c}\text{Im}\{\alpha_N(\omega)\}\\
+&= \frac{4\pi\omega}{c}\text{Im}\{\widebar{\alpha}_N(\omega)\}\\
+&= \sum_{i=1}^N\frac{4\pi e^2}{m_ic}\frac{\omega^2\gamma_i}{(\omega_i^2 - \omega^2)^2 + \omega^2\gamma_i^2}.
+\end{split}
+\end{equation}
+
+
+
+
+
+
+
+
+\end{document}
