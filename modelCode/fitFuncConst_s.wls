@@ -18,6 +18,8 @@ emks = 1.6021766208*10^(-19.) (* electron charge (C) *)
 e = 4.8032042510 * 10^(-10) (* electron charge (statC) *)
 nm2cm = 10^(-7.) (* cm / nm *)
 cm2nm = 10^(7.) (* nm / cm *)
+erg2eV = 6.242*10^11 (* eV / erg *)
+eV2erg = 1 / erg2eV (* erg / eV *)
 hbar = 6.626 * 10^(-27)  (* erg * s *)
 hbareV = 6.58211951 * 10^(-16) (* reduced Planck constant (eV*s) *)
 me = 9.10938*10^(-28) (* mass of electron (g) *)
@@ -81,6 +83,8 @@ sigAbs : Calculates the numerical absorption cross section in cm^2 at a given
 
 *)
 
+(******************** Convenient simplification functions *******************)
+
 epsDrude[hw0_,hwp0_,hgam0_,epsInf0_] := Module[
     { hw = hw0,hwp = hwp0,hgam = hgam0,
 	    epsInf = epsInf0 },
@@ -88,12 +92,26 @@ epsDrude[hw0_,hwp0_,hgam0_,epsInf0_] := Module[
 	Return[epsInf - hwp^2/(hw^2 + I * hw * hgam)]
 ]
 
+VariablesList[expr_] := Variables@Level[expr,{-1}]
+
+FlagPrint[flag_,output__] := Which[
+    flag == True,
+        Print[output],
+    True,
+        Null
+]
+
+(********************** Observable generating functions *********************)
+
 phiBCeq[n0_,l0_,m0_,radList0_] := Module[
     { n = n0,l = l0,m = m0,
         radList = radList0,
         Eq,EqList },
 
 	Clear[rp,A,B];
+
+	(* Two expansion coefficients must be zero from boundary conditions at 
+	    infinity and at zero *)
 	B[1,l,m] = 0;
 	A[n+2,l,m] = 0;
 
@@ -123,6 +141,8 @@ dBCeq[n0_,l0_,m0_,radList0_,epsList0_] := Module[
 
 	ClearAll[rp,Ylmstar,A,B];
 
+    (* Two expansion coefficients must be zero from boundary conditions at 
+	    infinity and at zero *)
 	B[1,l,m] = 0;
 	A[n+2,l,m] = 0;
 
@@ -172,20 +192,36 @@ dBCeq[n0_,l0_,m0_,radList0_,epsList0_] := Module[
 	Return[EqList]
 ]
 
-BCsolns[n0_,l0_,m0_,radList0_,epsList0_] := Module[
+(* Initialize optional arguments *)
+Protect[verbose];
+Options[BCsolns] = {verbose -> True};
+
+BCsolns[n0_,l0_,m0_,radList0_,epsList0_,precision0_:100,
+  opts:OptionsPattern[BCsolns]] := Module[
     { n = n0,l = l0,m = m0,
     	radList = radList0,
     	epsList = epsList0,
-	    phiBClist,dBClist,BClist,zeroList,Alist,Blist},
+    	precision = precision0,
+	    phiBClist,dBClist,BClist,zeroList,Alist,Blist,v},
 	ClearAll[A,B,solns];
 
+	v = OptionValue[verbose];
+
+	(* Set the precision of the radius and dielectric values to avoid any two
+        terms in Solve[] from becoming linearly dependent to the given
+        numerical precision *)
+	radList = SetPrecision[radList,precision];
+	epsList = SetPrecision[epsList,precision];
+
+    (* Get boundary condition equations for the potential and displacement
+        field *)
 	phiBClist = phiBCeq[n,l,m,radList];
 	dBClist = dBCeq[n,l,m,radList,epsList];
 
 	(* Join the lists of BCs for use in a later Solve[] call *)
 	BClist = Join[phiBClist,dBClist];
 
-	(* Build a list of zeros for use in a later Solve[call] *)
+	(* Build a list of zeros for use in a later Solve[] call *)
 	zeroList = ConstantArray[0,Length[BClist]];
 
 	Alist = {};
@@ -204,48 +240,259 @@ BCsolns[n0_,l0_,m0_,radList0_,epsList0_] := Module[
 		]
 	];
     
-    (* Solve the BCs using the proper list syntax for Solve[] *)
-	solns = Solve[BClist == zeroList,Join[Alist,Blist]];
+    (* Solve the BCs using the proper list syntax for Solve[]. Wrap the 
+        Solve[] command in a Do loop and Which statement that tests 
+        whether Solve[] will function properly with the radius and dielectric 
+        function values evaluated with the given precision. If it does not, 
+        produce an error message after n = nTrials failed attempts. *)
+    ClearAll[chk,err,nTrials];
+
+    nTrials = 25;
+
+    (* Print update with verbose mode on *)
+    FlagPrint[v,"BCsolns : Using boundary conditions to calculate" <>
+        " expansion coefficients..."];
+ 
+    Do[    
+        chk = Quiet@Check[ Solve[BClist == zeroList,Join[Alist,Blist],
+            WorkingPrecision -> precision], err ];
+
+        Which[
+            chk =!= err && chk =!= {},
+                FlagPrint[v,"BCsolns : Solution satisfying boundary" <>
+                    " conditions calculated normally."];
+	            solns = chk;
+	            Break[],
+            chk === err && i =!= nTrials,
+                Continue[],
+            chk === err && i == nTrials,
+                Print["BCsolns : Satisfactory solution not found after " <> 
+                    ToString[nTrials] <> " attempts. Try increasing the " <>
+                    " precision of the input values."];
+        ]
+    ,{i,1,nTrials}];
+
 	Return[solns[[1]]]
 ]
 
-alphalm[n0_,l0_,m0_,radList0_,epsList0_] := Module[
+alphalm[n0_,l0_,m0_,radList0_,epsList0_,precision0_:100,
+  opts:OptionsPattern[BCsolns]] := Module[
     { n = n0,l = l0,m = m0,
     	radList = radList0,
-    	epsList = epsList0 },
-	ClearAll[rp,Ylmstar,A,B,pol];
+    	epsList = epsList0,
+    	precision = precision0,
+    	v },
+	ClearAll[rp,Ylmstar,A,B,pol,En];
+
+	v = OptionValue[verbose];
 
     (* Get the solutions of the BCs *)
-	BCsolnsAssoc = BCsolns[n,l,m,radList,epsList];
+	BCsolnsAssoc = BCsolns[n,l,m,radList,epsList,precision,verbose -> v];
 
-    (* Get the solution of the Green function outside the particle and the
-        source. Subtract off the direct Coulomb potential contribution. Divide
-        away leading factors of Ylmstar, rp, etc., to get the expansion
-        policient of the Green function (contains spectral response 
-        only) times the radius of the particle to the l+2 power, i.e. the
-        particle polarizability. *)
-	pol = B[n+2,l,m]/.BCsolnsAssoc;
-	pol = pol - 4*Pi/(2*l+1) * rp * Ylmstar / epsList[[n+1]];
-	pol = -pol * epsList[[n+1]] * (2*l+1)/(4*Pi*Ylmstar*
-		radList[[n]]^(l-1))*rp^(l+1);
+    FlagPrint[v,"alphalm : Obtaining polarizability from expansion" <> 
+        " coefficient B_{n+2,l,m}..."];    
+
+    (* Get the expansion of the (l,m)^th mode of Green function outside the 
+        particle and the source. *)
+    pol = B[n+2,l,m] /. BCsolnsAssoc;
+
+    (* Find user-defined name of energy variable in pol. Let En be synonymous
+        the energy variable for ease of use. *)
+    En = (Select[VariablesList[pol], (# =!= rp && # =!= Ylmstar) &])[[1]];
     
-    (* Numerical precision limits require the polarizability to be simplified
-        and have hanging small factors removed before use. *)
-	Return@Chop@FullSimplify[pol]
+    (* The output forms of the expansion coefficient B[n+2,l,m] are 
+        different and depend on the numbers of shells in the particle ( and
+        therefore, I assume, on Mathematica's ability to simplify the output
+        expression before returning it). Further details of the strategies
+        for handling the two cases can be found in the notes. *)
+
+    (*** Uncomment for testing ***)
+    (* Print["pol head = ",Head@pol];
+    Print["pol terms # = ",Length@pol];
+    Which[
+        Head@pol === Times,
+            Print["pol = ",ScientificForm[pol,3]],
+        Head@pol === Plus,
+            Print["pol = ",Short[ScientificForm[pol,3],3]];
+    ]; *)
+    
+    Which[
+        (* For low number of shells, Mathematica can simplify the expression
+            for B[n+2,l,m] automatically and returns a product (see notes for 
+            details). *)
+        Head@pol === Times,
+            ClearAll[polPref,polNum,polDen,polCoul,polCoulRem];
+
+            (
+            (* Get rid of symbolic prefactors of the polarizability 
+                expression *)
+            pol = Cancel[ pol * rp^(l + 1)/Ylmstar ];
+
+            (* Get the (symbolic) numerator and denominator as well as the
+                (numeric) prefactor of the polarizability *)
+            polPref = Select[ pol, VariablesList[#] === {} & ];
+            polDen = (Select[ pol, VariablesList[#] === {En} & ])^(-1);
+            polNum = Collect[ 
+                Select[ pol, Sort@VariablesList[#] === Sort@{En, rp} & ], 
+                rp ];
+
+            (*** Uncomment for testing ***)
+            (* Print["Simplified pol = ",ScientificForm[pol,3]];
+            Print["pref = ",polPref];
+            Print["den = ",polDen];
+            Print["num = ",polNum]; *)
+            
+            (* Simplify the numerator of the polarizability by collecting the
+                terms that depend on rp. These should, when divided by the
+                denominator and multiplied by the prefactor, give the term 
+                of the expansion coefficient that contributes to the Coulomb
+                potential of the test charge (see notes for details). *)
+            polCoul = polPref * (PolynomialQuotientRemainder[ Select[ polNum,
+                Sort@VariablesList[#] === Sort@{En,rp} & ], 
+                polDen, En ])[[1]];
+
+            (*** Uncomment for testing: the remainder of the division step 
+                that is used to find the Coulomb potential should be 
+                zero. ***)
+            (* polCoulRem = polPref*(PolynomialQuotientRemainder[ 
+                Select[ polNum, VariablesList[#] === {En,rp} & ],
+                 polDen, En ])[[2]]; *)
+
+            (* Collect the terms that do not contribute to the Coulomb
+                potential of the test charge. These describe the nanoparticle
+                response. *)    
+            polNum = Plus@@(Select[ polNum, 
+                Sort@VariablesList[#] =!= Sort@{En,rp} & ]);
+
+            (*** Uncomment for testing ***)
+            (* Print["simp num = ",polNum];
+            Print["coul term = ",polCoul];
+            Print["coul term reaminder = ",polCoulRem]; *)
+
+            (* Algebra steps to get polarizability (see notes for details) *)
+            pol = polPref * polNum / polDen;
+            pol = (2*l + 1)/(4 * Pi) * epsList[[n+2]]/radList[[n]]^(2*l+1)* 
+                pol;
+            pol = radList[[n]]^(l+2) * pol
+            ),
+
+        (* For large numbers of shells, Mathematica doesn't attempt to 
+            simplify the expression for B[n+2,l,m] and returns a sum (see 
+            notes for details) *)
+        Head@pol === Plus && Length@pol == 3,
+            ClearAll[polCoul];
+
+            (
+            
+            (* Get the term of B[n+2,l,m] that describes the Coulomb 
+                potential of the test charge. Select should return the term 
+                as the only member of a Length == 1 list. The forced 
+                numerical evaluation with 3 digit precision avoids over-
+                pickiness by Select when pattern matching. *)
+            polCoul = Select[ List@@pol, 
+                N[#,3] === N[ 4*Pi/(2*l+1)/epsList[[n+2]] * rp * Ylmstar,
+                    3 ] & ];
+
+            (*** Uncomment for testing ***)
+            (* Print["coul term = ",polCoul]; *)
+
+            (* Check to see if polCoul is a single term in a list, as should
+	            be the case. If so, subtract it from pol. If not, print an
+	            error message and return Null. *) 
+            Which[
+                Length[ polCoul ] == 1,
+                    polCoul = polCoul[[1]];
+                    pol = pol - polCoul,
+                True,
+                    Print["alphalm : Vacuum term did not separate properly."];
+            ];
+            
+            (* Multiply out the symbolic dependence on rp and Ylmstar from 
+                the two terms in pol, use Cancel to simplify, and use Together
+                to produce a single fraction term. *)
+            pol = Together[ Cancel[ rp^(l+1)/Ylmstar * pol ] ];
+
+            (*** Uncomment for testing ***)
+            (* Print["pol = ",pol]; *)
+
+            (* Obtain resonant term (n(\omega)/d(\omega)) from B[n+2,l,m] 
+	            (see notes for details). *)
+            pol = (2*l+1)/(4*Pi)*epsList[[n+2]]/radList[[n]] * pol;
+
+            (* Obtain polarizability from resonant term *)
+            pol = radList[[n]]^(l+2) * pol;
+            ),
+
+        (* For moderate numbers of shells, Mathematica performs some of its
+            simplification procedures but not all of them. The expression for
+            B[n+2,l,m] is given as two terms in a sum, one of which contains 
+            the frequency dependence, and the other which contains the 
+            Coulomb term *)
+        Head@pol === Plus && Length@pol == 2,
+            ClearAll[pol1,pol2,polConstMag];
+
+            (* The first term of pol contains the frequency-dependent 
+                numerator and denominator. The second contains a constant and
+                the Coulomb term modulo a factor of Ylmstar/rp^(l+1) *)
+            pol1 = pol[[1]];
+            pol2 = pol[[2]];
+
+            pol1 = Collect[Cancel[pol1 * rp^(l+1)/Ylmstar],rp];
+            pol2 = Collect[Cancel[pol2 * rp^(l+1)/Ylmstar],rp];
+
+            (* When subtracting the Coulomb term from B[n+2,l,m], make sure
+                no hanging small factors remain by chopping any terms smaller
+                than 10^(-10) times the order of magnitude of the constant 
+                term *)
+            polConstMag = Floor@Log[10, Abs@Select[pol2,
+                VariablesList[#] === {}& ] ];
+            pol2 = Chop[pol2 - 4*Pi/(2*l+1)/epsList[[n+2]]*rp^(2*l+1),
+                polConstMag * 10^(-10)];
+
+            (* Add the constant and frequency dependent pieces of B[n+2,l,m] 
+                and multiply by the proper factors to build the 
+                polarizability (see notes for details) *)
+            pol = Together[pol1 + pol2];
+            pol = pol * (2*l+1)/(4*Pi)*epsList[[n+2]]/radList[[n]]^(2*l+1);
+            pol = radList[[n]]^(l+2) * pol;
+
+    ];
+
+    (* Check to see if the algebra above was done improperly. If any 
+        variables, besides the energy variable remain, the calculation will
+        fail. *)
+    Which[
+        Length@VariablesList[pol] > 1,
+            Print["alphalm : Polarizability was not obtained properly."];
+            Print["alphalm : Symbols in polarizability are ",
+                VariablesList[pol]];
+            Return[Null],
+        True,
+            FlagPrint[v,"alphalm : Polarizability calculated normally."];
+    ];
+    
+    (* Replace the energy variable with En *)
+    pol = pol/.En -> En;
+
+	Return[pol];
 
 ]
 
-resFinder[alpha0_,n0_,l0_,m0_,radList0_,epsList0_]:=Module[{alpha = alpha0,
+resFinder[alpha0_,n0_,l0_,m0_,radList0_,epsList0_,precision0_:100,
+  opts:OptionsPattern[BCsolns]]:= Module[{alpha = alpha0,
 	n = n0,l = l0,m = m0,
 	radList = radList0,
 	epsList = epsList0,
+	precision = precision0,
 	chilm,
 	L0,l1,l2,l3,l4,
-	num,den,resEn},
+	num,den,resEn,v},
 	ClearAll[En,scale,alphaVar,
 	    denResList,denList,denFact,numResList,numList,numFact,
 		denPref,numPref,denRem,numRem,denListSimp,numListSimp,
 		denFactSimp,numFactSimp];
+
+    v = OptionValue[verbose];
 
 	alphaVar = Variables@Level[alpha,{-1}];
 	Which[Length[alphaVar] > 1,
@@ -261,10 +508,16 @@ resFinder[alpha0_,n0_,l0_,m0_,radList0_,epsList0_]:=Module[{alpha = alpha0,
 	     for ease of use. *)
 	alpha = alpha/.alphaVar[[1]] -> En;
 
+    (* Set precision of radius and dielectric function values *)
+	radList = SetPrecision[radList,precision];
+	epsList = SetPrecision[epsList,precision];
+
     (* Divide radius information from the polarizability to get the unitless
         spectral response *)
 	chilm = alpha/Last[radList]^(l+2);
-	chilm = FullSimplify[chilm];
+
+	FlagPrint[v,"resFinder : Calculating mode oscillator strengths and" <>
+        " complex resonance frequencies..."];
 
     (* Get the roots of the numerator and denominator of chilm. Place them 
         into lists. *)
@@ -347,9 +600,9 @@ resFinder[alpha0_,n0_,l0_,m0_,radList0_,epsList0_]:=Module[{alpha = alpha0,
 	Print[denRem];
 	Print["---"];
 	Print["chilm in separated fraction form (manual) = "];
-	Print[numPref/denPref * Chop[Apart[numFact/denFact,En]]];
+	Print[numPref/denPref * Apart[numFact/denFact,En]];
 	Print["chilm in separated fraction form (manual with simplification) = "];
-	Print[numPref/denPref * Chop[Apart[numFactSimp/denFactSimp,En]]];
+	Print[numPref/denPref * Apart[numFactSimp/denFactSimp,En]];
 	Print["chilm in separated fraction form (automatic) = "];
 	Print[Apart[chilm,En]]; *)
  
@@ -402,65 +655,133 @@ resFinder[alpha0_,n0_,l0_,m0_,radList0_,epsList0_]:=Module[{alpha = alpha0,
 		]; 
 	,{i,Length[L0]}];
 
+	Which[
+		VariablesList[{l1,l2,l3,l4}] === {},
+        
+            FlagPrint[v,"resFinder : Mode oscillator strengths and "<> 
+                        "complex resonance frequencies" <>
+	                    " calculated normally."],
+        True,
+            Print["resFinder : Mode oscillator strengths and " <> 
+                "complex resonance frequencies" <>
+                "were not obtained properly."];
+            Print["resFinder : Symbols in oscillator strengths and " <> 
+                "resonance frequencies" <>
+                " are ",VariablesList[{l1,l2,l3,l4}]]
+	];
+
+    
+
 	Return[{l1,l2,l3,l4}];
 ]
 
-massFinder[alpha0_,n0_,l0_,m0_,radList0_,epsList0_]:=Module[
+massFinder[alpha0_,n0_,l0_,m0_,radList0_,epsList0_,precision0_:100,
+  opts:OptionsPattern[BCsolns]]:=Module[
     { alpha = alpha0,
 	n = n0,l = l0,m = m0,
 	radList = radList0,epsList = epsList0,
+	precision = precision0,
 	L0,L1,p,
-	resEn,natEn,A,f,M},
+	resEn,natEn,A,f,M,v},
+    v = OptionValue[verbose];
 
 	L0 = {};
 	L1 = {};
 
+	(* Set precision of radius and dielectric function values *)
+	radList = SetPrecision[radList,precision];
+	epsList = SetPrecision[epsList,precision];
+
+	FlagPrint[v,"massFinder : Calculating mode masses..."];
+
 	(* Get matrix of oscillator parameters *)
-	p = resFinder[alpha,n,l,m,radList,epsList];
+	p = resFinder[alpha,n,l,m,radList,epsList,precision,verbose -> False];
 
     (* Define oscillator strengths and effective masses and store them. *)
 	Do[
 		resEn = p[[2,i]];
 		natEn = p[[4,i]];
 		f = p[[1,i]];
-		M = e^2 * cm2nm^3 / ( Last[radList]^(l+2) * 
-			Abs[f]/hbareV * 2*resEn/hbareV );
+		M = e^2 * cm2nm^3 / ( 2* Last[radList]^3 * 
+			Abs[f/hbareV] * resEn/hbareV);
 		AppendTo[L0,f];
 		AppendTo[L1,M];
 	,{i,Length[ p[[1,All]] ]}];
 
+	Which[
+	    VariablesList[{L1}] === {},
+	        FlagPrint[v,"massFinder : Mode masses calculated normally."],
+        True,
+            Print["massFinder : Mode" <> 
+                " masses were not obtained properly."];
+            Print["massFinder : Symbols in mode masses" <>
+                " are ", VariablesList[{L1}]]
+	];
+
 	Return[{L0,L1}]
 ]
 
-parFinder[alpha0_,n0_,l0_,m0_,radList0_,epsList0_]:=Module[
+parFinder[alpha0_,n0_,l0_,m0_,radList0_,epsList0_,precision0_:100,
+  opts:OptionsPattern[BCsolns]]:=Module[
     { alpha = alpha0,
 	n = n0,l = l0,m = m0,
-	radList = radList0,epsList = epsList0,
-	p0,p1},
+	radList = radList0,
+	epsList = epsList0,
+	precision = precision0,
+	p0,p1,v},
+	v = OptionValue[verbose];
+
+	(* Set precision of radius and dielectric function values *)
+	radList = SetPrecision[radList,precision];
+	epsList = SetPrecision[epsList,precision];
+
+    FlagPrint[v,"parFinder : Calculating mode oscillator parameters..."];
 
     (* Get the natural, damping, and resonance energies as well as the 
         oscillator strengths and effective masses of the oscillators of the 
         particle. Store them nicely. *)
 
-	p0 = resFinder[alpha,n,l,m,radList,epsList];
-	p1 = massFinder[alpha,n,l,m,radList,epsList];
+	p0 = resFinder[alpha,n,l,m,radList,epsList,precision];
+	p1 = massFinder[alpha,n,l,m,radList,epsList,precision];
 
 	Do[
 		AppendTo[ p0,p1[[i]] ];
 	,{i,Length[ p1[[All,1]] ]}];
 
+	Which[
+        VariablesList[Part[p0,2;;]] === {},
+            FlagPrint[v,"parFinder : Oscillator parameters calculated" <>
+                " normally."],
+        True,
+            Print["parFinder : Oscillator parameters were not obtained" <>
+                " properly."];
+            Print["parFinder : Variables in oscillator parameters are ",
+                VariablesList[Part[p0,2;;]]]
+	];
+
 	Return[ Part[p0,2;;] ];
 ]
 
-sigAbsSymb[alpha0_,n0_,l0_,m0_,radList0_,epsList0_]:=Module[
+sigAbsSymb[alpha0_,n0_,l0_,m0_,radList0_,epsList0_,precision0_,
+  opts:OptionsPattern[BCsolns]]:=Module[
     { alpha = alpha0,
 	n = n0,l = l0,m = m0,
-	radList = radList0,epsList = epsList0,
+	radList = radList0,
+	epsList = epsList0,
+	precision = precision0,
 	p,L0,sig,dampEn,natEn,M},
 	ClearAll[En];
+	v = OptionValue[verbose];
+
+	(* Set precision of radius and dielectric function values *)
+	radList = SetPrecision[radList,precision];
+	epsList = SetPrecision[epsList,precision];
+
+    FlagPrint[v,"sigAbsSymb : Calculating symbolic absorption " <> 
+        "cross-section..."];
 
     (* Get the oscillator parameters for each oscillator of the particle. *)
-	p = parFinder[alpha,n,l,m,radList,epsList];
+	p = parFinder[alpha,n,l,m,radList,epsList,precision,verbose -> v];
 	L0 = {};
 
     (* Calculate the absorption cross-section of each of the oscillators using
@@ -475,7 +796,25 @@ sigAbsSymb[alpha0_,n0_,l0_,m0_,radList0_,epsList0_]:=Module[
 		AppendTo[L0,sig]
 	,{i,Length[ p[[1,All]] ]}];
 
-	Return[L0]
+    (* If the number of terms in the absorption cross-section is not equal to
+        the number of surfaces in the model, print an error *)
+
+    FlagPrint[v && Length@VariablesList[L0] == 1 && Length@L0 == n,
+        "sigAbsSymb : Symbolic absorption cross-section" <> 
+            " calculated normally."];
+
+    FlagPrint[Length@VariablesList[L0] == 1 && Length@L0 =!= n,
+        "sigAbsSymb : Number of terms in symbolic absorption " <> 
+            "cross-section does not match the chosen number of surfaces." <>
+            " A higher calculation precision may be needed."];
+
+    FlagPrint[Length@VariablesList[L0] =!= 1,
+        "sigAbsSymb : Symbolic absorption cross-section was not" <> 
+                " obtained properly. Variables in symbolic absorption" <> 
+                " cross-section are ",VariablesList[L0]];
+
+    Return[L0]
+
 ]
 
 sigAbs[hw0_,sigAbsSymb0_]:=Module[{hw = hw0,sigSymb = sigAbsSymb0},
@@ -483,7 +822,7 @@ sigAbs[hw0_,sigAbsSymb0_]:=Module[{hw = hw0,sigSymb = sigAbsSymb0},
 
     (* Get the symbolic definition of the absorption cross-section and 
         evaluate it at a given energy. *)
-	sig = sigSymb/.Dispatch[En->hw];
+	sig = sigSymb/.Dispatch[En -> hw];
 	Return[sig]
 ]
 
